@@ -10,9 +10,10 @@ icinga2_deb_repos:
 icinga2_debmon_repo: "deb http://debmon.org/debmon debmon-{{ ansible_distribution_release }} main"
 
 icinga2_pkg:
- - { package: "icinga2" }
- - { package: "nagios-plugins" }
- - { package: "bsd-mailx" }
+ - icinga2
+ - nagios-plugins
+ - bsd-mailx
+ - nagios-nrpe-plugin
 
 icinga2_use_public_yum_repo: True
 icinga2_url_yum: "https://packages.icinga.org/epel/ICINGA-release.repo"
