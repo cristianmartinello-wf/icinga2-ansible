@@ -34,20 +34,35 @@
   mysql_db:
     name: "{{ icinga2_db }}"
     state: present
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
   register: icinga_ido_db
 
 - name: Create Icinga2 IDO Database User and configure Grants
-  mysql_user:
+  mysql_user: 
     name: "{{ icinga2_db_user }}"
+    host: "%"
     password: "{{ icinga2_db_pass }}"
     state: present
-    priv: "{{ icinga2_db }}.*:ALL"
+    priv: "{{ icinga2_db }}.*:GRANT,INSERT,SELECT,UPDATE,DELETE,DROP,CREATE VIEW,INDEX,EXECUTE,REQUIRESSL"
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
+  # register: icinga_ido_db
+  # Removed this register because this always registers as changed and will 
+  # attempt to re-run "Import the IDO Schema on Icinga Web Database (only once)" 
+  # which will cause the play to fail. This will still get triggered off of DB 
+  # creation.
 
 - name: Import the IDO Schema on Icinga Web Database (only once)
-  mysql_db:
+  mysql_db: 
     name: "{{ icinga2_db }}"
     state: import
     target: "{{ icinga2_web_mysql_schema_debian }}"
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
   when: icinga_ido_db.changed == true
 
 - name: Configure Icinga2 Ido Mysql Feature
@@ -74,42 +89,54 @@
   tags: icinga2-ansible-web2-ui-install
 
 - name: Create a Web Database for Icinga2
-  mysql_db:
+  mysql_db: 
     name: "{{ icinga2_web2_db }}"
     state: present
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
   register: icinga_web_db
 
 - name: Create Icinga2 Web Database User and configure Grants
   mysql_user:
     name: "{{ icinga2_web2_db_user }}"
     password: "{{ icinga2_web2_db_pass }}"
+    host: "%"
     state: present
-    priv: "{{ icinga2_web2_db }}.*:GRANT,INSERT,SELECT,UPDATE,DELETE,DROP,CREATE VIEW,INDEX,EXECUTE"
+    priv: "{{ icinga2_web2_db }}.*:GRANT,INSERT,SELECT,UPDATE,DELETE,DROP,CREATE VIEW,INDEX,EXECUTE,REQUIRESSL"
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
 
 - name: Import the Web Schema on Icinga Web Database (only once)
   mysql_db:
     name: "{{ icinga2_web2_db }}"
     state: import
     target: "{{ icinga2_web2_mysql_schema_debian }}"
+    login_host: "{{ db_host }}"
+    login_user: "{{ db_root_username }}"
+    login_password: "{{ db_root_password }}"
   when: icinga_web_db.changed == true
 
-- name: Configure Icinga2 Ido Mysql Feature
-  template:
-    src: ido-mysql.conf.j2
-    dest: "{{ icinga2_ido_mysql_conf }}"
-    backup: yes
-    owner: nagios
-    group: nagios
-    mode: 0640
+- name: Define web server daemon package.
+  set_fact:
+    web_server_daemon: "{{ __web_server_daemon_deb }}"
+  when: web_server_daemon is not defined
 
-- name: Restart HTTPD and Icinga2 to Apply the Configuration
-  service:
-    name: "{{ item }}"
-    state: restarted
-    enabled: yes
+- name: Add timezone to php.ini
+  replace:
+    path: /etc/php5/apache2/php.ini
+    regexp: '^;date.timezone =.*'
+    replace: 'date.timezone = America/Chicago'
+
+- name: Restart {{web_server_daemon}} and Icinga2 to Apply the Configuration
+  service: name={{ item }}
+           state=reloaded
+           enabled=yes
   with_items:
     - apache2
     - icinga2
+  ignore_errors: yes
 
 - name: Add user www-data to group icingaweb2
   user:
@@ -135,3 +162,7 @@
   with_items:
     - monitoring
     - translation
+
+- name: Icinga Web2 Installation finished (Debian)
+  debug: msg="Now generate a token with 'icingacli setup token create' and visit http://SERVERIP/icingaweb2/setup to continue the installation"
+  tags: icinga2-ansible-web2-ui-install
